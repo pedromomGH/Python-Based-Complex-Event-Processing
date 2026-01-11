@@ -1,0 +1,4 @@
+faust-streaming==0.10.4
+prometheus-client==0.18.0
+psutil==5.9.5
+python-rocksdb==0.7.0

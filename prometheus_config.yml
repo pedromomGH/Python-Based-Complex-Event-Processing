@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    monitor: 'cep-benchmark'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - 'alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Faust metrics
+  - job_name: 'faust'
+    static_configs:
+      - targets: ['faust:8001']
+        labels:
+          engine: 'faust'
+          app: 'cep-benchmark'
+
+  # Streamz metrics
+  - job_name: 'streamz'
+    static_configs:
+      - targets: ['streamz:8002']
+        labels:
+          engine: 'streamz'
+          app: 'cep-benchmark'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          app: 'monitoring'

@@ -1,0 +1,43 @@
+groups:
+  - name: cep_performance
+    interval: 30s
+    rules:
+      # High processing latency alert
+      - alert: HighProcessingLatency
+        expr: histogram_quantile(0.95, rate(cep_processing_latency_seconds_bucket[2m])) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High processing latency detected ({{ $labels.engine }})"
+          description: "95th percentile latency is {{ $value }}s for {{ $labels.engine }}"
+
+      # Low throughput alert
+      - alert: LowThroughput
+        expr: rate(cep_events_processed_total[3m]) < 100
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low throughput detected ({{ $labels.engine }})"
+          description: "Event processing rate is {{ $value }} events/sec for {{ $labels.engine }}"
+
+      # High memory usage alert
+      - alert: HighMemoryUsage
+        expr: cep_memory_bytes / (1024 * 1024) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage ({{ $labels.engine }})"
+          description: "Memory usage is {{ $value }}MB for {{ $labels.engine }}"
+
+      # High CPU usage alert
+      - alert: HighCPUUsage
+        expr: cep_cpu_usage_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage ({{ $labels.engine }})"
+          description: "CPU usage is {{ $value }}% for {{ $labels.engine }}"

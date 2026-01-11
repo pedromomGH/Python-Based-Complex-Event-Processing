@@ -1,0 +1,259 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Kafka Infrastructure
+  # ============================================================================
+  
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper
+    container_name: cep-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_SYNC_LIMIT: 2
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - cep-network
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka
+    container_name: cep-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 4
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      # Performance optimizations
+      KAFKA_SOCKET_SEND_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_RECEIVE_BUFFER_BYTES: 102400
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: 104857600
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_FLUSH_INTERVAL_MESSAGES: 10000
+      # JVM settings
+      KAFKA_HEAP_OPTS: "-Xmx2G -Xms2G"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - ./config/kafka:/etc/kafka/conf
+    networks:
+      - cep-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # ============================================================================
+  # Faust CEP Engine
+  # ============================================================================
+  
+  faust:
+    build:
+      context: .
+      dockerfile: Dockerfile_faust
+    container_name: cep-faust
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      FAUST_BROKER: kafka://kafka:9092
+      FAUST_STORE: rocksdb://
+      FAUST_WEB_PORT: 6066
+      FAUST_WEB_HOST: 0.0.0.0
+      FAUST_WORKER_PORT: 6067
+      # Performance settings
+      FAUST_STREAM_BUFFER_MAXSIZE: 4096
+      FAUST_STREAM_WAIT_EMPTY: "false"
+      FAUST_BROKER_COMMIT_INTERVAL: 1.0
+      FAUST_BROKER_COMMIT_LIVELOCK_SOFT_TIMEOUT: 300.0
+      # Monitoring
+      PROMETHEUS_PORT: 8001
+      LOG_LEVEL: INFO
+    ports:
+      - "6066:6066"  # Faust web interface
+      - "8001:8001"  # Prometheus metrics
+    volumes:
+      - faust-state:/app/state
+      - ./faust_app.py:/app/app.py
+      - ./sample_iot_data.csv:/data/sample_iot_data.csv:ro
+      - ./sample_financial_data.csv:/data/sample_financial_data.csv:ro
+    networks:
+      - cep-network
+    restart: unless-stopped
+    command: ["faust", "-A", "app", "worker", "-l", "info"]
+
+  # ============================================================================
+  # Streamz CEP Engine
+  # ============================================================================
+  
+  streamz:
+    build:
+      context: .
+      dockerfile: Dockerfile_streamz
+    container_name: cep-streamz
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # Performance settings
+      STREAMZ_BUFFER_SIZE: 100
+      STREAMZ_POLL_INTERVAL_MS: 100
+      STREAMZ_FETCH_MAX_BYTES: 1048576
+      # Monitoring
+      PROMETHEUS_PORT: 8002
+      LOG_LEVEL: INFO
+    ports:
+      - "8002:8002"  # Prometheus metrics
+    volumes:
+      - ./streamz_app.py:/app/app.py
+      - ./sample_iot_data.csv:/data/sample_iot_data.csv:ro
+      - ./sample_financial_data.csv:/data/sample_financial_data.csv:ro
+    networks:
+      - cep-network
+    restart: unless-stopped
+    command: ["python", "app.py"]
+
+  # ============================================================================
+  # Workload Generator
+  # ============================================================================
+  
+  workload-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile_streamz  # Use streamz dockerfile as base
+    container_name: cep-workload-generator
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LOG_LEVEL: INFO
+    volumes:
+      - ./event_generator.py:/app/event_generator.py
+      - ./sample_iot_data.csv:/data/processed/sample_iot.jsonl:ro
+      - ./sample_financial_data.csv:/data/processed/sample_financial.jsonl:ro
+    networks:
+      - cep-network
+    profiles:
+      - workload
+    command: ["python", "event_generator.py"]
+
+  # ============================================================================
+  # Monitoring: Prometheus
+  # ============================================================================
+  
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: cep-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus_config.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus_alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - cep-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Monitoring: Grafana
+  # ============================================================================
+  
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: cep-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - cep-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Kafka UI (optional, for debugging)
+  # ============================================================================
+  
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: cep-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - cep-network
+    profiles:
+      - debug
+    restart: unless-stopped
+
+# ============================================================================
+# Networks
+# ============================================================================
+
+networks:
+  cep-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+# ============================================================================
+# Volumes
+# ============================================================================
+
+volumes:
+  zookeeper-data:
+    driver: local
+  zookeeper-logs:
+    driver: local
+  kafka-data:
+    driver: local
+  faust-state:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
