@@ -9,7 +9,6 @@ If you use this code or data in your research, please cite:
 ```
 Abbasi, M., Cardoso, F., Váz, P., Silva, J., Sá, F., & Martins, P. (2025).
 Performance Comparison of Python-Based Complex Event Processing Engines: Faust versus Streamz.
-[Journal Name], 1(1), Article 0.
 ```
 
 ## Overview
