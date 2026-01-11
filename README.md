@@ -543,8 +543,3 @@ This research was supported by:
 - v1.0.0 (2025-01): Initial release with paper publication
 - v1.1.0: Added support for custom datasets
 - v1.2.0: Enhanced monitoring dashboards
-
----
-
-**Last Updated**: January 2026
-**Maintainer**: Pedro Martins (pedromom@estgv.ipv.pt)
