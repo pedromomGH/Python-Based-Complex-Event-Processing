@@ -42,8 +42,6 @@ This package provides:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/cep-benchmark.git
-cd cep-benchmark
 
 # Generate sample data
 python generate_sample_iot_data.py
@@ -531,12 +529,7 @@ This code is released under the MIT License. See LICENSE file for details.
 The datasets have their own licenses:
 - IoT Dataset: CC BY 4.0
 - PaySim Dataset: CC BY-SA 4.0
-
-## Support
-
-For questions or issues:
-- Open an issue on GitHub
-- Contact: pedromom@estgv.ipv.pt
+  
 
 ## Acknowledgments
 
@@ -551,12 +544,7 @@ This research was supported by:
 - v1.1.0: Added support for custom datasets
 - v1.2.0: Enhanced monitoring dashboards
 
-## Related Publications
-
-1. Abbasi et al. (2025). Performance Comparison of Python-Based CEP Engines.
-2. [Additional related papers]
-
 ---
 
-**Last Updated**: January 2025
+**Last Updated**: January 2026
 **Maintainer**: Pedro Martins (pedromom@estgv.ipv.pt)
